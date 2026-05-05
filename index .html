@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>文化祭レジ（削除＋日別番号版）</title>
+
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  background: #f2f2f7;
+  margin: 0;
+}
+
+h2 {
+  text-align: center;
+  background: white;
+  margin: 0;
+  padding: 12px;
+  font-size: 22px;
+}
+
+.container {
+  max-width: 900px;
+  margin: auto;
+  padding: 10px;
+}
+
+.card {
+  background: white;
+  padding: 14px;
+  margin: 10px 0;
+  border-radius: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  font-size: 18px;
+}
+
+button {
+  font-size: 16px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: none;
+  background: #007aff;
+  color: white;
+  margin: 4px;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+.order-btn {
+  background: #34c759 !important;
+  font-size: 20px;
+  width: 100%;
+}
+
+.delete-btn {
+  background: #ff3b30 !important;
+}
+</style>
+</head>
+
+<body>
+
+<div id="start" class="container">
+  <h2>モード選択</h2>
+  <button onclick="setMode('register')">レジ</button>
+  <button onclick="setMode('kitchen')">厨房</button>
+</div>
+
+<!-- レジ -->
+<div id="register" class="container" style="display:none;">
+
+  <h2>レジ</h2>
+
+  <div class="card">
+    <h3>たこ焼き</h3>
+    <button onclick="addCart('たこ焼き',1)">＋1</button>
+    <button onclick="addCart('たこ焼き',2)">＋2</button>
+    <button onclick="addCart('たこ焼き',3)">＋3</button>
+  </div>
+
+  <div class="card">
+    <h3>大学芋</h3>
+    <button onclick="addCart('大学芋',1)">＋1</button>
+    <button onclick="addCart('大学芋',2)">＋2</button>
+    <button onclick="addCart('大学芋',3)">＋3</button>
+  </div>
+
+  <div class="card">
+    <h3>カート</h3>
+    <div id="cart"></div>
+    <button class="order-btn" onclick="sendCart()">まとめて注文</button>
+  </div>
+
+  <h3>注文履歴</h3>
+  <div id="history"></div>
+</div>
+
+<!-- 厨房 -->
+<div id="kitchen" class="container" style="display:none;">
+  <h2>厨房</h2>
+
+  <h3>未対応</h3>
+  <div id="todo"></div>
+
+  <h3>調理中</h3>
+  <div id="cooking"></div>
+
+  <h3>完成</h3>
+  <div id="done"></div>
+</div>
+
+<audio id="sound" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  onSnapshot,
+  doc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  setDoc,
+  increment
+} from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
+
+/* Firebase */
+const firebaseConfig = {
+  apiKey: "AIzaSyBB-VXdCnzvryJgtedeGahmSIPdXH1JfIY",
+  authDomain: "festival-order.firebaseapp.com",
+  projectId: "festival-order",
+  storageBucket: "festival-order.firebasestorage.app",
+  messagingSenderId: "675210507984",
+  appId: "1:675210507984:web:3223135299c296289250d5"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* モード */
+window.setMode = function(mode){
+  document.getElementById("start").style.display="none";
+  if(mode==="register") document.getElementById("register").style.display="block";
+  if(mode==="kitchen") document.getElementById("kitchen").style.display="block";
+};
+
+/* 今日キー */
+function getTodayKey(){
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+}
+
+/* 日別カウンター（0スタート） */
+async function getNextOrderNumber(){
+
+  const key = getTodayKey();
+  const ref = doc(db,"meta","counter");
+
+  const snap = await getDoc(ref);
+  let data = snap.exists() ? snap.data() : {};
+
+  if(!data[key]){
+    data[key] = 0;
+  }
+
+  data[key] += 1;
+
+  await setDoc(ref, data);
+
+  return data[key];
+}
+
+/* カート */
+let cart = {};
+
+window.addCart = function(item, qty){
+  if(!cart[item]) cart[item]=0;
+  cart[item]+=qty;
+  renderCart();
+};
+
+function renderCart(){
+  const cartDiv = document.getElementById("cart");
+  cartDiv.innerHTML="";
+  Object.keys(cart).forEach(k=>{
+    cartDiv.innerHTML += `${k} × ${cart[k]}<br>`;
+  });
+}
+
+/* まとめ注文 */
+window.sendCart = async function(){
+
+  const orderNumber = await getNextOrderNumber();
+  const date = getTodayKey();
+
+  let items = [];
+
+  Object.keys(cart).forEach(k=>{
+    if(cart[k]>0){
+      items.push(`${k}×${cart[k]}`);
+    }
+  });
+
+  if(items.length===0) return;
+
+  await addDoc(collection(db,"orders"),{
+    item: items.join(" / "),
+    orderNumber,
+    status:"未対応",
+    date,
+    time:Date.now()
+  });
+
+  cart = {};
+  renderCart();
+};
+
+/* 表示 */
+onSnapshot(collection(db,"orders"), (snapshot)=>{
+
+  const todo = document.getElementById("todo");
+  const cooking = document.getElementById("cooking");
+  const done = document.getElementById("done");
+  const history = document.getElementById("history");
+
+  if(todo) todo.innerHTML="";
+  if(cooking) cooking.innerHTML="";
+  if(done) done.innerHTML="";
+  if(history) history.innerHTML="";
+
+  document.getElementById("sound").play().catch(()=>{});
+
+  const grouped = {};
+
+  snapshot.forEach(d=>{
+
+    const data = d.data();
+
+    if(!grouped[data.date]) grouped[data.date]=[];
+    grouped[data.date].push({...data, id:d.id});
+
+    const card = document.createElement("div");
+    card.className="card";
+
+    if(data.status==="未対応") card.style.borderLeft="8px solid #ff3b30";
+    if(data.status==="調理中") card.style.borderLeft="8px solid #ff9500";
+    if(data.status==="完成済み") card.style.borderLeft="8px solid #34c759";
+
+    card.innerHTML = `
+      <b>#${data.orderNumber}</b><br>
+      ${data.item}<br>
+      [${data.status}]<br>
+      <button onclick="setCooking('${d.id}')">調理中</button>
+      <button onclick="setDone('${d.id}')">完成</button>
+    `;
+
+    if(data.status==="未対応" && todo) todo.appendChild(card);
+    if(data.status==="調理中" && cooking) cooking.appendChild(card);
+    if(data.status==="完成済み" && done) done.appendChild(card);
+  });
+
+  /* 履歴（日別＋削除ボタン） */
+  Object.keys(grouped).forEach(date=>{
+
+    const box = document.createElement("div");
+    box.className="card";
+
+    box.innerHTML = `<b>${date}</b><br>`;
+
+    grouped[date].forEach(o=>{
+      box.innerHTML += `
+        #${o.orderNumber} ${o.item} [${o.status}]
+        <button class="delete-btn" onclick="deleteOrder('${o.id}')">削除</button>
+        <br>
+      `;
+    });
+
+    history.appendChild(box);
+  });
+});
+
+/* ステータス */
+window.setCooking = async function(id){
+  await updateDoc(doc(db,"orders",id),{ status:"調理中" });
+};
+
+window.setDone = async function(id){
+  await updateDoc(doc(db,"orders",id),{ status:"完成済み" });
+};
+
+/* 削除 */
+window.deleteOrder = async function(id){
+  await deleteDoc(doc(db,"orders",id));
+};
+
+</script>
+
+</body>
+</html>
